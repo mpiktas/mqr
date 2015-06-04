@@ -56,11 +56,44 @@ prepmqr <- function(y, X, mt, Zenv, cl, start, Ofunction) {
         fun <- as.character(fr)[1]
         rfd[[i]] <- dterm(fr,fun)
     }
-
-    if(any(sapply(rfd, "[[", "discount_factor_name") != "")) {
+    
+    dfn <- sapply(rfd, "[[", "discount_factor_name")    
+    discountX <- TRUE
+    
+    if(any(dfn != "")) {
         Ofunction <- "lm"
-    }
+        ##We do not have to discount anything
+        discountX <- FALSE
+    } else {
+          terms_with_discount <- which(dfn != "")
+          if(length(start) != length(terms_with_discount)) {
+              stop("Please supply starting values for all terms which are discounted")
+          }
+          for(i in 1:length(terms_with_discount)) {
+              rfd[[terms_with_discount[i]]][["start"]] <- start[[i]]
+          }
+      }
 
+    
+    indexes <- lapply(rfd, function(l) {
+               if(l[["discount_factor_name"]] == "") {
+                   list(xdi = length(l$lag_structure),
+                        tfi = length(l$lag_structure),
+                        tmi = 1:length(l$lag_structure)
+                        tdi = 0
+                        )
+               } else {
+                     st <- l$discount_factor(l$start)
+                     if(length(st)!=length(l$lag_structure)) stop()
+                     list(xdi = length(l$qlev),
+                          tfi = length(l$qlev) + length(l$start),
+                          tmi = 1:length(l$qlev),
+                          tdi = length(l$qlev) + 1:length(l$start)
+                          )                     
+                 }
+           })
+    
+    
     build_indices <- function(ci) {
         inds <- cbind(c(1,ci[-length(ci)]+1),ci)
         inds <- apply(inds,1,function(x)list(x[1]:x[2]))
@@ -69,26 +102,30 @@ prepmqr <- function(y, X, mt, Zenv, cl, start, Ofunction) {
     }
 
     xinds <- build_indices(cumsum(sapply(rfd, "[[", "ncol")))
-    dinds <- {}
-    tinds <- {}
-        
-    
-    rfd <- mapply(function(l, x, d, t) c(l, list(xindex = x, dindex = d, tindex = t)),
-                      rfd, xinds, dinds, tinds, SIMPLIFY = FALSE)
+    xdinds <- build_indices(cumsum(sapply(indexes, "[[", "xdi")))
+    tfinds <- build_indices(cumsum(sapply(indexes, "[[", "tfi")))
+    tdinds <- mapply(function(f, s)f[s] tfinds, lapply(indexes, "[[", "tdi"), SIMPLIFY = FALSE)
+    tminds <- mapply(function(f, s)f[s] tfinds, lapply(indexes, "[[", "tdi"), SIMPLIFY = FALSE)
+            
+    rfd <- mapply(function(l, x, xd, tf, tm, td) c(l, list(index=list(x = x, xd = xd, tf = tf, tm = tm, td = td))),
+                      rfd, xinds, xdinds, tf, tminds, tfinds, SIMPLIFY = FALSE)
     
     quantile_discounted<- function(X, p) {
-        do.call("cbind",
+        if(discountX) {
+            do.call("cbind",
                 lapply(rfd,
                        function(l) {
-                           if(l$discount_factor_name == "") return(X[, l$xindex])
-                           dcf <- l$discount_factor(p[l$dindex])
-                           mq(X[, l$xindex], l$qlev, l$lag_structure, dcf)                   
+                           if(l$discount_factor_name == "") return(X[, l$index$x])
+                           dcf <- l$discount_factor(p[l$index$td])
+                           mq(X[, l$index$x], l$qlev, l$lag_structure, dcf)                   
                        })
-                )
+                    )
+        }else X
     }
 
+    tm <- sapply(lapply(rfd, "[[", "index"),"[[","tm")
     term_coef <- function(p) {
-        p[sapply(rfd, "[[", "tindex")]
+        p[tm]
     }
 
     rhs <- function(p, ...) {
