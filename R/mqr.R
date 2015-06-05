@@ -9,7 +9,7 @@
 ##' @return an mqr object
 ##' @author Vaidotas Zemlys
 ##' @export
-mqr <- function(formula, data, start=NULL, Ofunction="lm", ...) {
+mqr <- function(formula, data, start=NULL, Ofunction="optim", ...) {
 
     Zenv <- new.env(parent=environment(formula))
 
@@ -18,14 +18,17 @@ mqr <- function(formula, data, start=NULL, Ofunction="lm", ...) {
     mf <- match.call(expand.dots = FALSE)
     m <- match(c("formula", "data"), names(mf), 0L)
     mf <- mf[c(1L, m)]
-    mf[[1L]] <- as.name("model.frame")
+    ##We need to do na.action=na.pass here!
+    mf[[1L]] <- as.name("model.frame") 
+    mf[[4L]] <- as.name("na.pass")
+    names(mf)[4] <- c("na.action")
     mf <- eval(mf)
     mt <- attr(mf, "terms")
     y <- model.response(mf, "numeric")
     X <- model.matrix(mt, mf)
 
     out <- prepmqr(y, X, mt, Zenv, cl, args, start, Ofunction)
-    class(out) <- mqr
+    class(out) <- "mqr"
     mqr.fit(out)
 }
 
@@ -43,27 +46,28 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
         ncol <- 1
         lagstruct <- 0        
 
-        if(fun == "mqr") {
-            qlev <- eval(fr[[2]], Zenv)
-            lagstruct <- eval(fr[[3]], Zenv)
-            tname <- as.character(fr[[2]])
+        if(fun == "mq") {
+            qlev <- eval(fr[[3]], Zenv)
+            lagstruct <- eval(fr[[4]], Zenv)
+            tname <- paste0(as.character(fr[[2]]),"_q",paste(qlev*100,sep="_"),"_l",deparse(lagstruct))
+            ncol <- length(qlev)
+            
             if(length(fr)>=5) {
                 discount <- eval(fr[[5]],Zenv)
+                tname <- paste0(tname,"_d",deparse(fr[[5]]))
                 if(is.function(discount)) {
                     mf <- fr[c(-5, -2)]
                     mf[[1]] <- fr[[5]]
                     for(j in 3:length(mf)) mf[[j]] <- eval(mf[[j]], Zenv)
+                    mf[[3]] <- length(mf[[3]])
                     dcf <- function(p) {
-                        mf[[2]] <- p
+                        mf[[2]] <- eval(p)                        
                         eval(mf, Zenv)
                     }
                     ncol <- 1
                     start <- 0
                     tname <- paste(tname, qlev*100, as.character(fr[[5]]), sep="_")
-                } else {
-                      ncol <- length(qlev)
-                      tname <- paste(tname, qlev*100, sep="_")
-                 }
+                }              
             }    
         } else {
               if(fun %in% c("mls","dmls","fmls")) {
@@ -81,13 +85,15 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
                     lag_structure = lagstruct,
                     ncol = ncol,                    
                     discount_factor = dcf,
-                    start <- rep(0, ncol)
+                    start = rep(0, ncol)
                     ))        
     }
 
     rfd <- lapply(terms.lhs,dterm)
     if(attr(mt, "intercept") == 1) {
-        intc <- dterm()
+        intc <- dterm(expression(1))
+        intc$term_name <- "(Intercept)"
+        rfd <- c(list(intc),rfd)
     }
     
     
@@ -103,13 +109,15 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
               stop("Please supply starting values for all terms which are discounted")
           }
           for(i in 1:length(terms_with_discount)) {
-              rfd[[terms_with_discount[i]]][["start"]] <- c(rep(0,rfd[[terms_with_discount[i]]][["qlev"]]),start[[i]])
+              twd <- terms_with_discount[[i]]
+              rfd[[twd]][["start"]] <- c(rep(0,length(rfd[[twd]][["qlev"]])),start[[i]])
+              rfd[[twd]][["term_name"]] <- c(rfd[[twd]][["term_name"]],paste0("df_",i,"_",1:length(start[[i]])))
           }
       }
 
-    
     indexes <- lapply(rfd, function(l) {
-               if(is.null(l$discount_factor)) {
+                          if(is.null(l$discount_factor)) {
+                              
                    list(xdi = length(l$lag_structure),
                         tfi = length(l$lag_structure),
                         tmi = 1:length(l$lag_structure),
@@ -120,9 +128,9 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
                      st <- l$discount_factor(l$start[-(1:length(l$qlev))])
                      if(length(st)!=length(l$lag_structure)) stop()
                      list(xdi = length(l$qlev),
-                          tfi = length(l$qlev) + length(l$start),
+                          tfi = length(l$start),
                           tmi = 1:length(l$qlev),
-                          tdi = length(l$qlev) + 1:length(l$start)
+                          tdi = (length(l$qlev)+1):length(l$start)
                           )                     
                  }
            })
@@ -138,44 +146,47 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
     xinds <- build_indices(cumsum(sapply(rfd, "[[", "ncol")))
     xdinds <- build_indices(cumsum(sapply(indexes, "[[", "xdi")))
     tfinds <- build_indices(cumsum(sapply(indexes, "[[", "tfi")))
+    tminds <- mapply(function(f, s)f[s], tfinds, lapply(indexes, "[[", "tmi"), SIMPLIFY = FALSE)
     tdinds <- mapply(function(f, s)f[s], tfinds, lapply(indexes, "[[", "tdi"), SIMPLIFY = FALSE)
-    tminds <- mapply(function(f, s)f[s], tfinds, lapply(indexes, "[[", "tdi"), SIMPLIFY = FALSE)
             
     rfd <- mapply(function(l, x, xd, tf, tm, td) c(l, list(index=list(x = x, xd = xd, tf = tf, tm = tm, td = td))),
-                      rfd, xinds, xdinds, tf, tminds, tfinds, SIMPLIFY = FALSE)
+                      rfd, xinds, xdinds, tfinds, tminds, tdinds, SIMPLIFY = FALSE)
+
+    discount_term <- function(l,p) {
+        if(is.null(l$discount_factor)) return(X[, l$index[["x"]]])                          
+        dcf <- l$discount_factor(p[l$index$td])
+        mq(X[, l$index$x], l$qlev, l$lag_structure, dcf)
+    }
     
-    quantile_discounted<- function(X, p) {
+    quantile_discounted<- function(X, par) {
         if(discountX) {
-            do.call("cbind",
-                lapply(rfd,
-                       function(l) {
-                           if(is.null(l$discount_factor)) return(X[, l$index$x])
-                           dcf <- l$discount_factor(p[l$index$td])
-                           mq(X[, l$index$x], l$qlev, l$lag_structure, dcf)                   
-                       })
-                    )
+            xcols <- vector("list",length(rfd))
+            for(i in 1:length(rfd)) xcols[[i]] <- discount_term(rfd[[i]],par)
+            do.call("cbind", xcols)                    
         }else X
     }
 
-    tm <- sapply(lapply(rfd, "[[", "index"),"[[","tm")
-    
+    tm <- unlist(lapply(lapply(rfd, "[[", "index"),"[[","tm"))
+
     starto <- unlist(lapply(rfd, "[[", "start"))
-    names(starto) <- unlist(lapply(rfd, "[[", "term_name"))
-    
+    names(starto) <- unlist(lapply(rfd, "[[", "term_name"))    
     if(Ofunction != "lm") {
-        Xd <- quantile_discounted(X, p)
+        ##Just for debugging. Remove this zeroing later
+        st1 <- starto
+        st1[1:length(starto)] <- 0
+        Xd <- quantile_discounted(X, st1)
         starto[tm] <- coef(lsfit(Xd, y, intercept = FALSE))
     }
         
     rhs <- function(p, ...) {
         Xd <- quantile_discounted(X, p)
         coefs <- p[tm]
-        X %*% coefs
+        Xd %*% coefs
     }
     
     fn0 <- function(p, ...) {
         r <- y - rhs(p)
-        sum(r^2)
+        sum(r^2, na.rm = TRUE)
     }
 
     gr <- function(p)grad(fn0,p)
@@ -188,9 +199,9 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
     }
     
     out <- list(coefficients = starto,
-                model <- cbind(y,X),
-                dX <- function(p) quantile_discounted(X,p),
-                term_info = term_info,
+                model = cbind(y,X),
+                dX = function(p) quantile_discounted(X,p),
+                term_info = rfd,
                 fn0 = fn0,
                 rhs = rhs,
                 opt = NULL,
@@ -205,12 +216,13 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
 }
 
 
-mqr.fit <- function(c) {
+mqr.fit <- function(x) {
     args <- x$argmap_opt
     function.opt <- args$Ofunction
     args$Ofunction <- NULL
    
-    if(function.opt=="optim" | function.opt=="spg") {  
+    if(function.opt=="optim" | function.opt=="spg") {
+
         args$par <- x$start_opt
         args$fn <- x$fn0
         opt <- try(do.call(function.opt,args),silent=TRUE)
@@ -222,9 +234,9 @@ mqr.fit <- function(c) {
         x$convergence <- opt$convergence
     }
     
-    if (function.opt == "lm") {
-        fit <- lstfit(x$model[,-1], x$model[,1], intercept = FALSE)
-        par <- coef(fit)
+    if (function.opt == "lm") {       
+        fit <- lsfit(x$model[,-1], x$model[,1], intercept = FALSE)
+        par <- coef(fit)        
         names(par) <- names(coef(x))
         opt <- NULL
         x$convergence <- 0
@@ -246,10 +258,11 @@ mqr.fit <- function(c) {
     
     x$opt <- opt
     x$coefficients <- par    
-    ##Get Xd and get the coefficients corresponding to Xd
-    tm <- sapply(lapply(x$term_info, "[[", "index"),"[[","tm")
-    Xd <- x$Xd(par)
-    x$fitted.values <- as.vector(Xd %*% par)
+    ##Get dX and get the coefficients corresponding to Xd
+    tm <- unlist(lapply(lapply(x$term_info, "[[", "index"),"[[","tm"))
+
+    Xd <- x$dX(par)
+    x$fitted.values <- as.vector(Xd %*% par[tm])
     x$residuals <- as.vector(x$model[, 1] - x$fitted.values)
     x
 }
