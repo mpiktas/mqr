@@ -7,6 +7,7 @@
 ##' @param start the starting values for discount function
 ##' @param ... additional parameters
 ##' @return an mqr object
+##' @import numDeriv
 ##' @author Vaidotas Zemlys
 ##' @export
 mqr <- function(formula, data, start=NULL, Ofunction="optim", ...) {
@@ -173,7 +174,7 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
     if(Ofunction != "lm") {
         ##Just for debugging. Remove this zeroing later
         st1 <- starto
-        st1[1:length(starto)] <- 0
+    #    st1[1:length(starto)] <- 0
         Xd <- quantile_discounted(X, st1)
         starto[tm] <- coef(lsfit(Xd, y, intercept = FALSE))
     }

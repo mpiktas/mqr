@@ -8,7 +8,10 @@ Author: Virmantas Kvedaras <virmantas.kvedaras@mif.vu.lt>, Vaidotas Zemlys
     <vaidotas.zemlys@mif.vu.lt>
 Depends:
     R (>= 3.0.0),
+	sandwich,
+	optimx
 Imports:
-	midasr
+	midasr,
+	numDeriv
 License: GPL-2 | MIT + file LICENCE
 BugReports: https://github.com/mpiktas/mqr/issues

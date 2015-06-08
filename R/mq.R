@@ -20,7 +20,7 @@ mq <- function(x, alpha, k, d = NULL, ... ) {
             if(length(d)!=ncol(X))stop("The number of discount factors must be the same as the number of lags")
             X <- sweep(X,2,d,"*")        
         }        
-        r <- apply(X, 1, quantile, probs = alpha, na.rm = TRUE)
+        r <- apply(X, 1, quantile, probs = alpha, na.rm = TRUE, names = FALSE, type = 8)
         if(length(alpha)==1) {
             r <- matrix(r, nrow = length(r))
         }else {
