@@ -13,6 +13,8 @@ mq(x, alpha, k, d = NULL, ...)
 
 \item{k}{band structure}
 
+\item{d}{the discount factor}
+
 \item{...}{additional parameters}
 }
 \value{

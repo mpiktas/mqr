@@ -5,6 +5,7 @@
 ##' @param x a vector
 ##' @param alpha a quantile
 ##' @param k band structure
+##' @param d the discount factor
 ##' @param ... additional parameters
 ##' @return a matrix
 ##' @author Vaidotas Zemlys

@@ -1,5 +1,6 @@
 .DS_store
-
+*.o
+*.so
 # History files
 .Rhistory
 

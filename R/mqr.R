@@ -1,3 +1,9 @@
+#' @docType package
+#' @name mqr
+#' @useDynLib mqr
+#' @importFrom Rcpp cppFunction 
+NULL
+
 ##' Performs moving quantile regression
 ##'
 ##' Performs moving quantile regression
@@ -5,9 +11,11 @@
 ##' @param formula a formula specifying moving quantile regression
 ##' @param data data data
 ##' @param start the starting values for discount function
+##' @param Ofunction the name of optimisation function to use for NLS problem
 ##' @param ... additional parameters
 ##' @return an mqr object
 ##' @import numDeriv
+##' @import optimx
 ##' @author Vaidotas Zemlys
 ##' @export
 mqr <- function(formula, data, start=NULL, Ofunction="optim", ...) {
@@ -156,7 +164,7 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
     discount_term <- function(l,p) {
         if(is.null(l$discount_factor)) return(X[, l$index[["x"]]])                          
         dcf <- l$discount_factor(p[l$index$td])
-        mq(X[, l$index$x], l$qlev, l$lag_structure, dcf)
+        mqC(X[, l$index$x], l$qlev, l$lag_structure, dcf)
     }
     
     quantile_discounted<- function(X, par) {

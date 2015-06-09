@@ -11,7 +11,9 @@ Depends:
 	sandwich,
 	optimx
 Imports:
+	Rcpp,
 	midasr,
 	numDeriv
+LinkingTo: Rcpp
 License: GPL-2 | MIT + file LICENCE
 BugReports: https://github.com/mpiktas/mqr/issues
