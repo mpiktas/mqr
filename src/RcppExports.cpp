@@ -6,12 +6,12 @@
 using namespace Rcpp;
 
 // q8
-NumericVector q8(NumericVector x, NumericVector probs);
+NumericVector q8(std::vector<double> x, NumericVector probs);
 RcppExport SEXP mqr_q8(SEXP xSEXP, SEXP probsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject __result;
     Rcpp::RNGScope __rngScope;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< std::vector<double> >::type x(xSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type probs(probsSEXP);
     __result = Rcpp::wrap(q8(x, probs));
     return __result;
