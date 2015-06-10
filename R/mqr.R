@@ -35,13 +35,12 @@ mqr <- function(formula, data, start=NULL, Ofunction="optim", ...) {
     mt <- attr(mf, "terms")
     y <- model.response(mf, "numeric")
     X <- model.matrix(mt, mf)
-
-    out <- prepmqr(y, X, mt, Zenv, cl, args, start, Ofunction)
+    out <- prepmqr(y, X, mt, Zenv, cl, args, start, Ofunction, mf)
     class(out) <- "mqr"
     mqr.fit(out)
 }
 
-prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
+prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction, mf) {
     
     terms.lhs <- as.list(attr(mt,"variables"))[-2:-1]
     term.labels <- attr(mt,"term.labels") 
@@ -60,7 +59,6 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
             lagstruct <- eval(fr[[4]], Zenv)
             tname <- paste0(as.character(fr[[2]]),"_q",paste(qlev*100,sep="_"),"_l",deparse(lagstruct))
             ncol <- length(qlev)
-            
             if(length(fr)>=5) {
                 discount <- eval(fr[[5]],Zenv)
                 tname <- paste0(tname,"_d",deparse(fr[[5]]))
@@ -125,11 +123,10 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
       }
 
     indexes <- lapply(rfd, function(l) {
-                          if(is.null(l$discount_factor)) {
-                              
-                   list(xdi = length(l$lag_structure),
-                        tfi = length(l$lag_structure),
-                        tmi = 1:length(l$lag_structure),
+                          if(is.null(l$discount_factor)) {                              
+                   list(xdi = l$ncol,
+                        tfi = l$ncol,
+                        tmi = 1:l$ncol,
                         tdi = 0
                         )
                } else {
@@ -172,29 +169,34 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
             xcols <- vector("list",length(rfd))
             for(i in 1:length(rfd)) xcols[[i]] <- discount_term(rfd[[i]],par)
             do.call("cbind", xcols)                    
-        }else X
+        } else X
     }
-
+    
     tm <- unlist(lapply(lapply(rfd, "[[", "index"),"[[","tm"))
 
     starto <- unlist(lapply(rfd, "[[", "start"))
-    names(starto) <- unlist(lapply(rfd, "[[", "term_name"))    
+    names(starto) <- unlist(lapply(rfd, "[[", "term_name"))
+    Xd <- quantile_discounted(X,starto)
+
+    md <- na.omit(cbind(y,Xd))
+    if(is.null(attributes(md)[["na.action"]])) {
+        ind <- 1:length(y)
+    } else {
+          ind <- (1:length(y))[-attr(md,"na.action")]
+      }    
+
     if(Ofunction != "lm") {
-        ##Just for debugging. Remove this zeroing later
-        st1 <- starto
-    #    st1[1:length(starto)] <- 0
-        Xd <- quantile_discounted(X, st1)
-        starto[tm] <- coef(lsfit(Xd, y, intercept = FALSE))
-    }
-        
+        starto[tm] <- coef(lsfit(Xd[ind,], y[ind], intercept = FALSE))
+    } 
+
     rhs <- function(p, ...) {
-        Xd <- quantile_discounted(X, p)
+        Xd <- quantile_discounted(X, p)[ind, ]
         coefs <- p[tm]
         Xd %*% coefs
     }
     
     fn0 <- function(p, ...) {
-        r <- y - rhs(p)
+        r <- y[ind] - rhs(p)
         sum(r^2, na.rm = TRUE)
     }
 
@@ -208,8 +210,8 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
     }
     
     out <- list(coefficients = starto,
-                model = cbind(y,X),
-                dX = function(p) quantile_discounted(X,p),
+                model = mf,
+                dX = function(p) quantile_discounted(X, p)[ind, ],
                 term_info = rfd,
                 fn0 = fn0,
                 rhs = rhs,
@@ -221,6 +223,7 @@ prepmqr <- function(y, X, mt, Zenv, cl, args, start, Ofunction) {
                 call = cl,
                 gradient = gr,
                 hessiand= hess,
+                estimation_sample = ind,
                 Zenv = Zenv)                
 }
 
@@ -243,8 +246,9 @@ mqr.fit <- function(x) {
         x$convergence <- opt$convergence
     }
     
-    if (function.opt == "lm") {       
-        fit <- lsfit(x$model[,-1], x$model[,1], intercept = FALSE)
+    if (function.opt == "lm") {
+        y <- model.response(x$model, "numeric")[x$estimation_sample]
+        fit <- lsfit(x$dX(coef(x)), y, intercept = FALSE)
         par <- coef(fit)        
         names(par) <- names(coef(x))
         opt <- NULL
@@ -258,7 +262,7 @@ mqr.fit <- function(x) {
         args$start <- list(p=x$start_opt)
         opt <- try(do.call("nls",args),silent=TRUE)
         if(inherits(opt,"try-error")) {
-            stop("The optimisation algorithm of MIDAS regression failed with the following message:\n", opt,"\nPlease try other starting values or a different optimisation function")
+            stop("The optimisation algorithm of Moving quantile regression failed with the following message:\n", opt,"\nPlease try other starting values or a different optimisation function")
         }
         par <- coef(opt)
         names(par) <- names(coef(x))
@@ -267,12 +271,11 @@ mqr.fit <- function(x) {
     
     x$opt <- opt
     x$coefficients <- par    
-    ##Get dX and get the coefficients corresponding to Xd
-    tm <- unlist(lapply(lapply(x$term_info, "[[", "index"),"[[","tm"))
+    
+    x$fitted.values <- as.vector(x$rhs(coef(x)))
 
-    Xd <- x$dX(par)
-    x$fitted.values <- as.vector(Xd %*% par[tm])
-    x$residuals <- as.vector(x$model[, 1] - x$fitted.values)
+    y <- model.response(x$model, "numeric")[x$estimation_sample]
+    x$residuals <- as.vector(y - x$fitted.values)
     x
 }
     

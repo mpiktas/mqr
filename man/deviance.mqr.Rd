@@ -7,7 +7,7 @@
 \method{deviance}{mqr}(object, ...)
 }
 \arguments{
-\item{object}{a \code{\link{midas_r}} object}
+\item{object}{a \code{\link{mqr}} object}
 
 \item{...}{currently nothing}
 }
@@ -15,7 +15,7 @@
 The sum of squared residuals
 }
 \description{
-Returns the deviance of a fitted MIDAS regression object
+Returns the deviance of a fitted moving quantile regression object
 }
 \author{
 Virmantas Kvedaras, Vaidotas Zemlys
