@@ -6,14 +6,15 @@ Version: 0.0.1
 Maintainer: Vaidotas Zemlys <zemlys@gmail.com>
 Author: Virmantas Kvedaras <virmantas.kvedaras@mif.vu.lt>, Vaidotas Zemlys
     <vaidotas.zemlys@mif.vu.lt>
-Depends:
+Depends: 
     R (>= 3.0.0),
 	sandwich,
 	optimx
-Imports:
+Imports: 
 	Rcpp,
 	midasr,
 	numDeriv
 LinkingTo: Rcpp
 License: GPL-2 | MIT + file LICENCE
 BugReports: https://github.com/mpiktas/mqr/issues
+Suggests: testthat

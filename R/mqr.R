@@ -31,7 +31,7 @@ mqr <- function(formula, data, start=NULL, Ofunction="optim", ...) {
     mf[[1L]] <- as.name("model.frame") 
     mf[[4L]] <- as.name("na.pass")
     names(mf)[4] <- c("na.action")
-    mf <- eval(mf)
+    mf <- eval(mf, Zenv)
     mt <- attr(mf, "terms")
     y <- model.response(mf, "numeric")
     X <- model.matrix(mt, mf)
